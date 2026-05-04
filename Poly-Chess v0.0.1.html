@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Poly-Chess v0.0.1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+/*
+  --sq: the size of one chess square.
+  Portrait : board width is the constraint  → 96vw / 9, capped at 74px
+  Landscape: board height is the constraint → (100dvh - 90px) / 8
+             (90px reserves space for the status row, taken row, and footer)
+  We take the smaller of both axes so the board is always square and fully visible.
+*/
+:root {
+  --sq: min(
+    calc(96vw / 9),
+    calc((100dvh - 90px) / 8),
+    74px
+  );
+  --piece: calc(var(--sq) * 0.76);
+  --color-bg-dark:  #0d0d1a;
+  --color-panel:    #1a1a2e;
+  --color-primary:  #7c3aed;
+  --color-accent:   #4338ca;
+  --color-glow:     #a78bfa;
+  --color-shadow:   #050510;
+}
+.hidden { display: none !important; }
+.btn-pixel { padding: 4px 12px; text-transform: uppercase; font-weight: bold; border: 4px solid var(--color-primary); background: var(--color-panel); box-shadow: inset -2px -2px 0px var(--color-shadow); cursor: pointer; }
+.btn-pixel:hover { background: var(--color-primary); color: var(--color-bg-dark); }
+.menu-scroll { background: linear-gradient(180deg, var(--color-bg-dark) 0%, var(--color-panel) 45%, var(--color-panel) 55%, var(--color-bg-dark) 100%); border: 6px solid var(--color-primary); box-shadow: 0 0 6px 2px color-mix(in srgb, var(--color-primary) 55%, transparent), 0 0 28px 4px color-mix(in srgb, var(--color-primary) 28%, transparent), 0 0 70px color-mix(in srgb, var(--color-primary) 12%, transparent), inset 0 0 40px rgba(0,0,0,0.45); width: 640px; max-width: 92vw; max-height: 92dvh; overflow-y: auto; scrollbar-width: none; }
+.menu-scroll::-webkit-scrollbar { display: none; }
+.start-menu-btn { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 24px; font-family: 'VT323', monospace; font-size: 1.45rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--color-glow); background: transparent; border: none; border-bottom: 2px solid var(--color-shadow); cursor: pointer; text-shadow: 2px 2px 0 var(--color-shadow); text-align: left; transition: background 0.12s, padding-left 0.12s; }
+.start-menu-btn:hover { background: color-mix(in srgb, var(--color-primary) 10%, transparent); color: #fff; padding-left: 28px; }
+.start-menu-btn:last-child { border-bottom: none; }
+.start-back-btn { font-family: 'VT323', monospace; font-size: 1.1rem; text-transform: uppercase; padding: 6px 14px; color: var(--color-primary); background: transparent; border: 4px solid var(--color-primary); cursor: pointer; letter-spacing: 0.05em; }
+.start-back-btn:hover { background: var(--color-primary); color: var(--color-bg-dark); }
+.subpanel-header { display: flex; align-items: center; gap: 16px; padding: 16px; background: var(--color-bg-dark); position: sticky; top: 0; z-index: 10; border-bottom: 6px solid var(--color-primary); }
+.subpanel-header h2 { font-size: 1.5rem; color: var(--color-glow); font-weight: bold; text-transform: uppercase; font-style: italic; }
+.subpanel-footer { position: sticky; bottom: 0; height: 6px; background: var(--color-bg-dark); }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+html, body { height: 100%; margin: 0; overflow-x: hidden; }
+body {
+  background: #0d0d1a;
+  color: #e8e8f0;
+  font-family: system-ui, -apple-system, sans-serif;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overscroll-behavior: none;
+  /* safe-area padding so nothing is clipped by notches / home-bar */
+  padding-left:  env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+#board { display:grid; grid-template-columns:repeat(9,var(--sq)); grid-template-rows:repeat(8,var(--sq)); border-radius:5px; overflow:hidden; box-shadow:0 12px 48px rgba(0,0,0,0.75); flex-shrink:0; }
+.sq { width:var(--sq); height:var(--sq); display:flex; align-items:center; justify-content:center; position:relative; cursor:pointer; }
+.piece { font-size:var(--piece); line-height:1; position:relative; z-index:2; pointer-events:none; }
+.sq.sel::after { content:''; position:absolute; inset:0; background:rgba(255,215,0,0.3); z-index:1; }
+.sq.sel { outline:3px solid rgba(255,215,0,0.85); outline-offset:-3px; z-index:3; }
+.sq.hint::before { content:''; position:absolute; width:33%; height:33%; border-radius:50%; background:rgba(0,180,80,0.65); z-index:1; }
+.sq.capt::before { content:''; position:absolute; inset:0; border:5px solid rgba(200,50,30,0.8); border-radius:2px; z-index:1; }
+.sq.last-f,.sq.last-t { filter:brightness(1.28); }
+.sq.check-sq { background:radial-gradient(circle at center,rgba(255,40,0,0.75) 0%,transparent 68%) !important; }
+.swatch { width:36px; height:36px; border-radius:50%; cursor:pointer; border:3px solid transparent; transition:transform .15s,border-color .15s; flex-shrink:0; }
+.swatch.on { border-color:#FFD700; transform:scale(1.22); }
+.swatch:hover { transform:scale(1.12); }
+/* setup screen: scrollable so it fits on any screen height */
+#setup { max-height:100dvh; overflow-y:auto; padding-top: max(12px, env(safe-area-inset-top)); }
+/* side buttons: ensure 44px minimum tap height */
+.side-btn { flex:1; min-height:44px; padding:10px 0; border-radius:12px; font-size:13px; font-weight:600; background:#1e1e30; border:2px solid #444; color:#e8e8f0; cursor:pointer; transition:border-color .15s; }
+.play-btn { width:100%; padding:16px; border-radius:16px; font-size:18px; font-weight:900; letter-spacing:.15em; text-transform:uppercase; border:none; color:#fff; cursor:pointer; background:linear-gradient(135deg,#7c3aed,#4338ca); box-shadow:0 4px 24px rgba(124,58,237,0.45); }
+/* icon buttons: enforce 44×44 minimum tap area */
+.icon-btn { font-size:13px; opacity:.45; min-height:44px; min-width:44px; padding:0 12px; border-radius:8px; background:rgba(255,255,255,.08); border:none; color:#e8e8f0; cursor:pointer; transition:opacity .15s; display:inline-flex; align-items:center; justify-content:center; }
+.icon-btn:hover { opacity:.85; }
+.card { width:100%; border-radius:16px; padding:16px; display:flex; flex-direction:column; gap:10px; background:rgba(255,255,255,.05); }
+.lbl { font-size:11px; text-transform:uppercase; letter-spacing:.18em; opacity:.5; }
+/* game screen: fills the full viewport height, content centred vertically */
+#game-container { display: flex; flex-direction: column; }
+#game { flex: 1; overflow: hidden; gap: clamp(8px, 2vmin, 16px); padding: clamp(4px, 2vmin, 12px); justify-content: center; }
+/* copyright footer */
+#footer { padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+/* promotion modal */
+#promo-modal { position:fixed; inset:0; z-index:500; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.75); }
+#promo-modal .promo-box { background:var(--color-panel); border:4px solid var(--color-primary); border-radius:12px; padding:20px; text-align:center; }
+#promo-modal .promo-box p { color:var(--color-glow); font-size:0.85rem; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:14px; }
+#promo-modal .promo-choices { display:flex; gap:12px; justify-content:center; }
+#promo-modal .promo-piece { font-size:2.6rem; background:transparent; border:2px solid transparent; border-radius:8px; cursor:pointer; padding:6px 10px; transition:border-color .12s, background .12s; }
+#promo-modal .promo-piece:hover { border-color:var(--color-glow); background:rgba(255,255,255,0.08); }
+</style>
+</head>
+<body>
+
+    <div id="start-overlay" class="fixed inset-0 z-[200] flex items-center justify-center" style="background:#000;">
+        <div id="start-main" class="menu-scroll relative z-10">
+            <div class="text-center pt-4 pb-4 px-6" style="border-bottom: 4px solid var(--color-shadow);">
+                <div style="min-height:180px; display:flex; align-items:center; justify-content:center;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 160" width="420" height="160" style="max-width:92vw;height:auto;" role="img" aria-label="Poly-Chess">
+  <defs>
+    <linearGradient id="lg-title" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#c4b5fd"/>
+      <stop offset="55%" stop-color="#a78bfa"/>
+      <stop offset="100%" stop-color="#6d28d9"/>
+    </linearGradient>
+    <linearGradient id="lg-board" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7c3aed" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#4338ca" stop-opacity="0.10"/>
+    </linearGradient>
+    <filter id="glow-f" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="text-glow" x="-10%" y="-30%" width="120%" height="160%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="board-clip">
+      <rect x="0" y="0" width="420" height="160"/>
+    </clipPath>
+  </defs>
+
+  <!-- Chessboard tile accents — top-left corner -->
+  <g clip-path="url(#board-clip)" opacity="0.18">
+    <rect x="0"  y="0"  width="14" height="14" fill="#7c3aed"/>
+    <rect x="14" y="0"  width="14" height="14" fill="#4338ca"/>
+    <rect x="28" y="0"  width="14" height="14" fill="#7c3aed"/>
+    <rect x="0"  y="14" width="14" height="14" fill="#4338ca"/>
+    <rect x="14" y="14" width="14" height="14" fill="#7c3aed"/>
+    <rect x="28" y="14" width="14" height="14" fill="#4338ca"/>
+    <rect x="0"  y="28" width="14" height="14" fill="#7c3aed"/>
+    <rect x="14" y="28" width="14" height="14" fill="#4338ca"/>
+    <rect x="28" y="28" width="14" height="14" fill="#7c3aed"/>
+  </g>
+  <!-- Chessboard tile accents — bottom-right corner -->
+  <g clip-path="url(#board-clip)" opacity="0.18">
+    <rect x="378" y="118" width="14" height="14" fill="#7c3aed"/>
+    <rect x="392" y="118" width="14" height="14" fill="#4338ca"/>
+    <rect x="406" y="118" width="14" height="14" fill="#7c3aed"/>
+    <rect x="378" y="132" width="14" height="14" fill="#4338ca"/>
+    <rect x="392" y="132" width="14" height="14" fill="#7c3aed"/>
+    <rect x="406" y="132" width="14" height="14" fill="#4338ca"/>
+    <rect x="378" y="146" width="14" height="14" fill="#7c3aed"/>
+    <rect x="392" y="146" width="14" height="14" fill="#4338ca"/>
+    <rect x="406" y="146" width="14" height="14" fill="#7c3aed"/>
+  </g>
+
+  <!-- Top horizontal rule -->
+  <line x1="30" y1="18" x2="390" y2="18" stroke="#7c3aed" stroke-width="1" opacity="0.45"/>
+  <!-- Bottom horizontal rule -->
+  <line x1="30" y1="142" x2="390" y2="142" stroke="#7c3aed" stroke-width="1" opacity="0.45"/>
+
+  <!-- Corner diamond ornaments -->
+  <polygon points="30,14 34,18 30,22 26,18" fill="#7c3aed" opacity="0.7"/>
+  <polygon points="390,14 394,18 390,22 386,18" fill="#7c3aed" opacity="0.7"/>
+  <polygon points="30,138 34,142 30,146 26,142" fill="#7c3aed" opacity="0.7"/>
+  <polygon points="390,138 394,142 390,146 386,142" fill="#7c3aed" opacity="0.7"/>
+
+  <!-- King silhouette centred above the title text -->
+  <!-- base -->
+  <rect x="197" y="56" width="26" height="5" rx="2" fill="url(#lg-title)" filter="url(#glow-f)"/>
+  <!-- stem -->
+  <rect x="208" y="36" width="4" height="20" rx="2" fill="url(#lg-title)" filter="url(#glow-f)"/>
+  <!-- crossbar -->
+  <rect x="203" y="40" width="14" height="4" rx="2" fill="url(#lg-title)" filter="url(#glow-f)"/>
+  <!-- body trapezoid -->
+  <polygon points="199,56 201,44 219,44 221,56" fill="url(#lg-title)" filter="url(#glow-f)"/>
+  <!-- crown notches cut-outs (decorative top of body) -->
+  <polygon points="201,44 205,38 209,44" fill="#0d0d1a"/>
+  <polygon points="209,44 213,38 217,44" fill="#0d0d1a"/>
+  <polygon points="217,44 221,44 221,44" fill="#0d0d1a"/>
+
+  <!-- POLY-CHESS wordmark -->
+  <text
+    x="210"
+    y="120"
+    text-anchor="middle"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="48"
+    font-weight="700"
+    letter-spacing="4"
+    fill="url(#lg-title)"
+    filter="url(#text-glow)"
+  >POLY-CHESS</text>
+
+  <!-- Thin separator under text -->
+  <line x1="100" y1="130" x2="320" y2="130" stroke="#a78bfa" stroke-width="0.75" opacity="0.4"/>
+</svg>
+</div>
+                <div class="flex items-center justify-center gap-3 mt-2"><div class="flex-grow h-px" style="background:linear-gradient(to right,transparent,var(--color-primary))"></div><span style="font-size:1rem; color:var(--color-primary); text-transform:uppercase; letter-spacing:0.4em;">Chess, Reinvented</span><div class="flex-grow h-px" style="background:linear-gradient(to left,transparent,var(--color-primary))"></div></div>
+            </div>
+            <div class="flex flex-col">
+                <button class="start-menu-btn" onclick="sfxClick();launchGame()"><span>Play</span><span class="ml-auto text-base opacity-40 font-sans">↵</span></button>
+                <button class="start-menu-btn" onclick="sfxClick();showStartPanel('howtoplay')"><span>How to Play</span><span class="ml-auto text-base opacity-40 font-sans">›</span></button>
+                <button class="start-menu-btn" onclick="sfxClick();showStartPanel('highscores')"><span>High Scores</span><span class="ml-auto text-base opacity-40 font-sans">›</span></button>
+                <button class="start-menu-btn" onclick="sfxClick();showStartPanel('patchnotes')"><span>Patch Notes</span><span class="ml-auto text-base opacity-40 font-sans">›</span></button>
+                <button class="start-menu-btn" onclick="sfxClick();showStartPanel('settings')"><span>Settings</span><span class="ml-auto text-base opacity-40 font-sans">›</span></button>
+            </div>
+            <p style="font-size:10px; text-transform:uppercase; letter-spacing:0.35em; color:var(--color-primary); opacity:0.6; text-align:center; padding:12px 0; border-top: 1px solid var(--color-shadow);">&copy; Tacticon Studios 2026 &nbsp;&mdash;&nbsp; v0.0.1</p>
+        </div>
+        <div id="start-howtoplay" class="menu-scroll hidden relative z-10"><div class="subpanel-header"><button class="start-back-btn" onclick="showStartPanel('main')">← Back</button><h2>How to Play</h2></div><div class="p-5 space-y-5" style="font-family:'VT323',monospace;font-size:1.1rem;color:#d1d5db">
+  <div>
+    <div style="color:var(--color-glow);font-weight:bold;font-size:1.2rem;text-transform:uppercase;border-bottom:2px solid var(--color-shadow);padding-bottom:6px;margin-bottom:8px;letter-spacing:0.1em">OBJECTIVE</div>
+    <p>Chess on a <span style="color:var(--color-glow)">9×8 board</span>. You play as <span style="color:#e2e8f0">White</span> against an AI opponent. Put the king in checkmate to win. The AI is rated at a fixed <span style="color:var(--color-glow)">1200 ELO</span>.</p>
+  </div>
+  <div>
+    <div style="color:var(--color-glow);font-weight:bold;font-size:1.2rem;text-transform:uppercase;border-bottom:2px solid var(--color-shadow);padding-bottom:6px;margin-bottom:8px;letter-spacing:0.1em">POLY-CHESS RULES</div>
+    <div>• Each side starts with <span style="color:var(--color-glow)">2 queens</span> — one on each side of the king.</div>
+    <div>• The board is 9 columns wide, so each side has <span style="color:var(--color-glow)">9 pawns</span> in the front row.</div>
+    <div>• All other standard chess rules apply — see below.</div>
+  </div>
+  <div>
+    <div style="color:var(--color-glow);font-weight:bold;font-size:1.2rem;text-transform:uppercase;border-bottom:2px solid var(--color-shadow);padding-bottom:6px;margin-bottom:8px;letter-spacing:0.1em">PLAYING</div>
+    <div>• Tap a piece to select it — legal moves are highlighted on the board.</div>
+    <div>• Tap a highlighted square to move. Tap the selected piece again to deselect.</div>
+  </div>
+  <div>
+    <div style="color:var(--color-glow);font-weight:bold;font-size:1.2rem;text-transform:uppercase;border-bottom:2px solid var(--color-shadow);padding-bottom:6px;margin-bottom:8px;letter-spacing:0.1em">SPECIAL MOVES</div>
+    <div>• <span style="color:var(--color-glow)">Castling</span> — King moves two squares toward a rook (neither can have moved; king cannot be in check, pass through check, or land in check).</div>
+    <div>• <span style="color:var(--color-glow)">En passant</span> — Capture a pawn that just moved two squares past yours, as if it had only moved one.</div>
+  </div>
+  <div>
+    <div style="color:var(--color-glow);font-weight:bold;font-size:1.2rem;text-transform:uppercase;border-bottom:2px solid var(--color-shadow);padding-bottom:6px;margin-bottom:8px;letter-spacing:0.1em">PROMOTION</div>
+    <p>When a pawn reaches the back rank, a promotion menu appears. Choose <span style="color:var(--color-glow)">Queen</span>, <span style="color:var(--color-glow)">Rook</span>, <span style="color:var(--color-glow)">Bishop</span>, or <span style="color:var(--color-glow)">Knight</span>.</p>
+  </div>
+  <div>
+    <div style="color:var(--color-glow);font-weight:bold;font-size:1.2rem;text-transform:uppercase;border-bottom:2px solid var(--color-shadow);padding-bottom:6px;margin-bottom:8px;letter-spacing:0.1em">DRAWS &amp; ELO</div>
+    <div>• The game is drawn by stalemate, 50-move rule, threefold repetition, or insufficient material.</div>
+    <div>• Stalemate caused by the AI counts as a <span style="color:var(--color-glow)">win</span> for you, not a draw.</div>
+    <div>• Your ELO updates after every game (K-factor 32). The AI is fixed at 1200.</div>
+  </div>
+</div><div class="subpanel-footer"></div></div>
+        <div id="start-highscores" class="menu-scroll hidden relative z-10"><div class="subpanel-header"><button class="start-back-btn" onclick="showStartPanel('main')">← Back</button><h2>High Scores</h2></div><div class="p-5" id="highscore-list"><p style="text-align:center;color:var(--color-primary);opacity:0.5;font-size:0.875rem;margin-top:32px">No scores recorded yet.</p></div><div class="subpanel-footer"></div></div>
+        <div id="start-patchnotes" class="menu-scroll hidden relative z-10"><div class="subpanel-header"><button class="start-back-btn" onclick="showStartPanel('main')">← Back</button><h2>Patch Notes</h2></div><div id="patchnotes-list" class="p-5 text-[12px] space-y-5"></div><div class="subpanel-footer"></div></div>
+        <div id="start-settings" class="menu-scroll hidden relative z-10"><div class="subpanel-header"><button class="start-back-btn" onclick="showStartPanel('main')">← Back</button><h2>Settings</h2></div><div class="p-6 space-y-6"><div><h3 style="color:var(--color-glow);text-transform:uppercase;font-weight:bold;font-size:0.875rem;border-bottom:1px solid var(--color-shadow);padding-bottom:8px;margin-bottom:16px;letter-spacing:0.1em">Audio</h3><div class="flex items-center justify-between py-2" style="border-bottom:1px solid var(--color-shadow)"><span>SFX Volume</span><div class="flex items-center gap-3"><input type="range" id="vol-slider" min="0" max="100" value="100" oninput="updateVolume(this.value)" style="accent-color:var(--color-primary);width:120px"><span id="vol-val" style="color:var(--color-glow);width:40px;text-align:right">100%</span></div></div><div class="flex items-center justify-between py-2"><span>Sound Effects</span><button id="sfx-toggle" onclick="toggleSFX()" class="btn-pixel text-sm px-4">ON</button></div></div></div><div class="subpanel-footer"></div></div>
+    </div>
+
+<!-- Promotion modal (Bug 7) -->
+<div id="promo-modal" class="hidden">
+  <div class="promo-box">
+    <p>Promote your pawn</p>
+    <div class="promo-choices">
+      <button class="promo-piece" onclick="resolvePromo(5)" title="Queen">&#9813;</button>
+      <button class="promo-piece" onclick="resolvePromo(4)" title="Rook">&#9814;</button>
+      <button class="promo-piece" onclick="resolvePromo(3)" title="Bishop">&#9815;</button>
+      <button class="promo-piece" onclick="resolvePromo(2)" title="Knight">&#9816;</button>
+    </div>
+  </div>
+</div>
+
+<div id="game-container" class="hidden w-full h-full">
+<!-- SETUP -->
+<div id="setup" class="flex flex-col items-center gap-4 p-5 w-full" style="max-width:340px">
+  <div class="text-center pt-3 pb-1">
+    <div class="font-black" style="font-size:52px;letter-spacing:.32em;text-shadow:0 2px 22px rgba(150,100,255,.55)">POLY-CHESS</div>
+    <div class="lbl" style="margin-top:4px">Tacticon Studios</div>
+  </div>
+
+  <div class="card">
+    <p class="lbl">Your Pieces</p>
+    <div class="flex flex-wrap gap-2" id="light-sw"></div>
+  </div>
+
+  <div class="card">
+    <p class="lbl">Opponent Pieces</p>
+    <div class="flex flex-wrap gap-2" id="dark-sw"></div>
+  </div>
+
+  <div class="card">
+    <p class="lbl">Play As</p>
+    <div class="flex gap-2">
+      <button type="button" id="bw" class="side-btn" onclick="setSide(1)">First (White)</button>
+      <button type="button" id="bb" class="side-btn" onclick="setSide(-1)">Second (Black)</button>
+    </div>
+  </div>
+
+  <button type="button" class="play-btn" onclick="sfxClick();startChessGame()">Play</button>
+</div>
+
+<!-- GAME -->
+<div id="game" style="display:none" class="flex flex-col items-center w-full">
+  <div class="flex items-center justify-between w-full" style="max-width:calc(var(--sq)*9);padding:0 2px">
+    <div id="status" style="font-size:clamp(12px,3.5vw,15px);font-weight:600;letter-spacing:.03em"></div>
+    <div class="flex gap-1">
+      <button type="button" id="mute-btn" class="icon-btn" onclick="toggleMute()" title="Toggle sound">SFX</button>
+      <button type="button" class="icon-btn" onclick="sfxClick();newGame()">New</button>
+      <button type="button" class="icon-btn" onclick="sfxClick();backSetup()">Menu</button>
+    </div>
+  </div>
+
+  <div id="board"></div>
+
+  <div class="flex justify-between w-full" style="max-width:calc(var(--sq)*9);min-height:20px;font-size:clamp(13px,4vw,16px);padding:0 2px">
+    <div id="ptaken" style="opacity:.6"></div>
+    <div id="btaken" style="opacity:.6;text-align:right"></div>
+  </div>
+</div>
+
+<p id="footer" style="font-size:10px;text-align:center;opacity:0.4;padding:8px;letter-spacing:0.3em;text-transform:uppercase;">&copy; Tacticon Studios 2026 &mdash; v0.0.1</p>
+</div><!-- /game-container -->
+
+<script>
+(function(){ var _k='polychess_wipe_v001'; if(localStorage.getItem(_k)!=='1'){ localStorage.removeItem('polychess_hs'); var _elo=JSON.parse(localStorage.getItem('tacticon_elo')||'{}'); delete _elo.polychess; localStorage.setItem('tacticon_elo',JSON.stringify(_elo)); localStorage.setItem(_k,'1'); } })();
+// ── AUDIO ENGINE ──────────────────────────────────────────────────────────────
+const _ac = { ctx: null };
+function _audioCtx() {
+  if (!_ac.ctx) _ac.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  return _ac.ctx;
+}
+let _muted = false;
+function playTone(freq, dur, type='sine', vol=0.3, delay=0) {
+  if (_muted) return;
+  try {
+    const ctx = _audioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const gainNode = ctx.createGain();
+    gainNode.gain.value = sfxVolume;
+    osc.connect(gain); gain.connect(gainNode); gainNode.connect(ctx.destination);
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+    gain.gain.setValueAtTime(vol, ctx.currentTime + delay);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + dur);
+    osc.start(ctx.currentTime + delay);
+    osc.stop(ctx.currentTime + delay + dur);
+  } catch(e) {}
+}
+function playNoise(dur, vol=0.2) {
+  if (_muted) return;
+  try {
+    const ctx = _audioCtx();
+    const buf = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource();
+    const gain = ctx.createGain();
+    const gainNode = ctx.createGain();
+    gainNode.gain.value = sfxVolume;
+    src.buffer = buf; src.connect(gain); gain.connect(gainNode); gainNode.connect(ctx.destination);
+    gain.gain.setValueAtTime(vol, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+    src.start(); src.stop(ctx.currentTime + dur);
+  } catch(e) {}
+}
+// ── SFX FUNCTIONS ─────────────────────────────────────────────────────────────
+function sfxSelect()  { playTone(600, 0.05, 'square', 0.12); }
+function sfxMove()    { playNoise(0.06, 0.18); playTone(180, 0.09, 'sine', 0.08); }
+function sfxCapture() { playNoise(0.10, 0.28); playTone(140, 0.12, 'sine', 0.10); playTone(90, 0.18, 'sine', 0.07, 0.05); }
+function sfxCheck()   { playTone(520, 0.12, 'square', 0.18); playTone(660, 0.12, 'square', 0.18, 0.14); playTone(780, 0.18, 'square', 0.18, 0.28); }
+function sfxWin()     { [0,0.12,0.24,0.38,0.54].forEach((t,i)=>{ const notes=[440,523,659,784,1047]; playTone(notes[i],0.18,'sine',0.22,t); }); }
+function sfxLose()    { [0,0.14,0.30,0.50].forEach((t,i)=>{ const notes=[440,370,311,220]; playTone(notes[i],0.20,'sine',0.18,t); }); }
+function sfxDraw()    { playTone(392, 0.14, 'sine', 0.16); playTone(370, 0.14, 'sine', 0.16, 0.18); playTone(349, 0.22, 'sine', 0.14, 0.36); }
+function sfxClick()   { playTone(900, 0.04, 'square', 0.10); }
+// ── MUTE TOGGLE ───────────────────────────────────────────────────────────────
+function toggleMute() {
+  _muted = !_muted;
+  const btn = document.getElementById('mute-btn');
+  if (btn) { btn.textContent = _muted ? 'MUTE' : 'SFX'; btn.style.opacity = _muted ? '0.3' : ''; }
+}
+// ── START MENU ────────────────────────────────────────────────────────────────
+const PATCH_NOTES = [
+  { v: 'v0.0.1', date: '2026-05-04', notes: ['Initial GitHub release.'] },
+  { v: 'v0.0.0', date: '2026-05-04', notes: ['Poly-Chess — forked from Chass v0.0.4. 9×8 board, 2 queens per side, 9 pawns per side.'] },
+];
+const HS_KEY = 'polychess_hs';
+
+// ── ELO ───────────────────────────────────────────────────────────────────────
+const ELO_KEY = 'tacticon_elo';
+const ELO_AI  = 1200;   // AI is treated as a fixed 1200 rating
+const ELO_K   = 32;     // standard K-factor
+
+function getElo() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(ELO_KEY));
+    return (stored && typeof stored.polychess === 'number') ? stored.polychess : 1200;
+  } catch { return 1200; }
+}
+
+function saveElo(newRating) {
+  try {
+    const stored = JSON.parse(localStorage.getItem(ELO_KEY)) || {};
+    stored.polychess = Math.round(newRating);
+    localStorage.setItem(ELO_KEY, JSON.stringify(stored));
+  } catch {}
+}
+
+// outcome: 1 = win, 0.5 = draw, 0 = loss
+function calcElo(currentRating, outcome) {
+  const expected = 1 / (1 + Math.pow(10, (ELO_AI - currentRating) / 400));
+  const newRating = currentRating + ELO_K * (outcome - expected);
+  return Math.round(newRating);
+}
+function saveScore(score, label='') { const scores = getScores(); scores.push({ score, label, date: new Date().toLocaleDateString() }); scores.sort((a,b)=>b.score-a.score); scores.splice(10); localStorage.setItem(HS_KEY, JSON.stringify(scores)); }
+function getScores() { try { return JSON.parse(localStorage.getItem(HS_KEY)) || []; } catch { return []; } }
+function renderHighScores() { const el = document.getElementById('highscore-list'); const scores = getScores(); const primary = getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim(); const glow = getComputedStyle(document.documentElement).getPropertyValue('--color-glow').trim(); const shadow = getComputedStyle(document.documentElement).getPropertyValue('--color-shadow').trim(); if (!scores.length) { el.innerHTML = `<p style="text-align:center;color:${primary};opacity:0.5;font-size:0.875rem;margin-top:32px">No scores recorded yet.</p>`; return; } el.innerHTML = scores.map((s,i) => `<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid ${shadow};font-size:0.875rem"><span style="color:${primary};width:24px;text-align:right">${i+1}.</span><span style="flex:1;color:#fff">${s.label||'—'}</span><span style="color:${glow};font-weight:bold">${s.score}</span><span style="color:${primary};opacity:0.5;font-size:0.75rem">${s.date}</span></div>`).join(''); }
+function renderPatchNotes() { const el = document.getElementById('patchnotes-list'); const primary = getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim(); const glow = getComputedStyle(document.documentElement).getPropertyValue('--color-glow').trim(); if (!PATCH_NOTES.length) { el.innerHTML = `<p style="text-align:center;color:${primary};opacity:0.5;font-size:0.875rem;margin-top:32px">No patch notes yet.</p>`; return; } el.innerHTML = PATCH_NOTES.map(p => `<div><div style="display:flex;align-items:baseline;gap:12px;margin-bottom:4px"><span style="color:${glow};font-weight:bold">${p.v}</span><span style="color:${primary};opacity:0.6;font-size:10px">${p.date}</span></div><ul style="margin:0;padding:0;list-style:none">${p.notes.map(n=>`<li style="color:#d1d5db">• ${n}</li>`).join('')}</ul></div>`).join(''); }
+const PANELS = ['main','howtoplay','settings','highscores','patchnotes'];
+function showStartPanel(name, fromPopstate=false) { PANELS.forEach(p => { const el = document.getElementById('start-'+p); if (el) el.classList.toggle('hidden', p !== name); }); if (name === 'highscores') renderHighScores(); if (name === 'patchnotes') renderPatchNotes(); if (!fromPopstate && name !== 'main') history.pushState({ panel: name }, ''); }
+
+// Bug 5 & 6: fixed popstate handler — never re-pushes state after back navigation
+window.addEventListener('popstate', function(e) {
+  const ov = document.getElementById('start-overlay');
+  const gc = document.getElementById('game-container');
+  const gameDiv = document.getElementById('game');
+  const setupDiv = document.getElementById('setup');
+  // Start overlay visible with a sub-panel open: go back to main panel
+  if (ov && !ov.classList.contains('hidden')) { showStartPanel('main', true); return; }
+  // Game container visible and mid-game (#game shown): go back to setup screen
+  if (gc && !gc.classList.contains('hidden') && gameDiv && gameDiv.style.display !== 'none') {
+    gameDiv.style.display = 'none';
+    setupDiv.style.display = 'flex';
+    // Bug 6 fix: do NOT push new state here — browser already moved back
+    return;
+  }
+  // Game container visible and on setup screen: return to start overlay
+  if (gc && !gc.classList.contains('hidden') && setupDiv && setupDiv.style.display !== 'none') {
+    gc.classList.add('hidden');
+    ov.classList.remove('hidden');
+    showStartPanel('main', true);
+  }
+});
+let sfxEnabled = true;
+let sfxVolume = 1.0;
+function updateVolume(val) { sfxVolume = val / 100; document.getElementById('vol-val').textContent = val + '%'; }
+function toggleSFX() { sfxEnabled = !sfxEnabled; _muted = !sfxEnabled; document.getElementById('sfx-toggle').textContent = sfxEnabled ? 'ON' : 'OFF'; const mb=document.getElementById('mute-btn'); if(mb){mb.textContent=_muted?'MUTE':'SFX';mb.style.opacity=_muted?'0.3':'';} }
+function launchGame() {
+  history.pushState({ panel: 'setup' }, '');
+  document.getElementById('start-overlay').classList.add('hidden');
+  document.getElementById('game-container').classList.remove('hidden');
+  document.getElementById('game').style.display='none';
+  document.getElementById('setup').style.display='flex';
+  buildSetup();
+}
+
+// ── PALETTES ─────────────────────────────────────────────────────────────────
+const LIGHTS=[['Ivory','#FFFFF0'],['Cream','#FFF5CC'],['Champagne','#F7D794'],['Rose','#FFCDD2'],['Lavender','#D7C8F0'],['Mint','#C5F0C8'],['Sky','#B8DFF0'],['Pearl','#EDE8E0'],['Silver','#DCDCDC'],['Peach','#FFD5B8']];
+const DARKS=[['Navy','#1B2A4A'],['Forest','#1A3A20'],['Maroon','#5C1010'],['Charcoal','#303840'],['Plum','#4A1550'],['Teal','#004A4A'],['Slate','#2F4050'],['Burgundy','#5C1A27'],['Midnight','#191960'],['Espresso','#2C1810']];
+
+// ── CONSTANTS ─────────────────────────────────────────────────────────────────
+const P=1,N=2,B=3,R=4,Q=5,K=6,W=1,BK=-1;
+// Bug 8: separate white and black piece symbol tables
+const SYM_W={[P]:'♙',[N]:'♘',[B]:'♗',[R]:'♖',[Q]:'♕',[K]:'♔'};
+const SYM_B={[P]:'♟',[N]:'♞',[B]:'♝',[R]:'♜',[Q]:'♛',[K]:'♚'};
+// generic symbol map (used for board rendering via colour-tinted spans)
+const SYM2={[P]:'♟',[N]:'♞',[B]:'♝',[R]:'♜',[Q]:'♛',[K]:'♚'};
+const LSQ='#F0D9B5',DSQ='#B58863';
+
+// ── PIECE VALUES (for scoring) ─────────────────────────────────────────────────
+const PIECE_VAL={[P]:1,[N]:3,[B]:3,[R]:5,[Q]:9,[K]:0};
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let pColor=LIGHTS[0][1],bColor=DARKS[0][1],pSide=W;
+// Bug 9: ep initialised as null (not undefined)
+let board,turn,sel,lastF,lastT,ep=null,cr,over,pCap,bCap,moveCount;
+// Bug 13: 50-move rule and repetition tracking
+let halfMoveClock, posHistory;
+
+// ── SETUP UI ──────────────────────────────────────────────────────────────────
+function buildSetup(){
+  buildSW('light-sw',LIGHTS,0,h=>pColor=h);
+  buildSW('dark-sw',DARKS,0,h=>bColor=h);
+  setSide(W);
+}
+function buildSW(id,pal,def,cb){
+  const el=document.getElementById(id);
+  el.innerHTML='';
+  pal.forEach(([name,hex],i)=>{
+    const d=document.createElement('div');
+    d.className='swatch'+(i===def?' on':'');
+    d.style.background=hex; d.title=name;
+    d.onclick=()=>{ el.querySelectorAll('.swatch').forEach((s,j)=>s.classList.toggle('on',j===i)); cb(hex); };
+    el.appendChild(d);
+  });
+}
+function setSide(s){
+  pSide=s;
+  document.getElementById('bw').style.borderColor=s===W?'#FFD700':'#444';
+  document.getElementById('bb').style.borderColor=s===BK?'#FFD700':'#444';
+}
+function startChessGame(){ history.pushState({ panel: 'chess' }, ''); document.getElementById('setup').style.display='none'; document.getElementById('game').style.display='flex'; newGame(); }
+
+// backSetup: navigate back via history — popstate handler shows the start overlay and main panel
+function backSetup(){
+  document.getElementById('game').style.display='none';
+  document.getElementById('setup').style.display='flex';
+  // Bug 2 fix: do NOT call showStartPanel/unhide overlay here; history.back() fires popstate
+  // which calls showStartPanel('main', true) via the handler — calling it here was the duplicate
+  history.back();
+}
+
+// ── BOARD INIT ────────────────────────────────────────────────────────────────
+function initBd(){
+  board=Array(72).fill(0);
+  [-R,-N,-B,-Q,-K,-Q,-B,-N,-R].forEach((p,i)=>{ board[i]=p; board[i+9]=-P; });
+  [R,N,B,Q,K,Q,B,N,R].forEach((p,i)=>{ board[63+i]=p; board[54+i]=P; });
+}
+function newGame(){
+  initBd(); turn=W; sel=null; lastF=lastT=-1; ep=null;
+  cr={wK:true,wQ:true,bK:true,bQ:true}; over=false; pCap=[]; bCap=[]; moveCount=0;
+  halfMoveClock=0; posHistory={}; posHistory[boardKey()]=1;
+  render(); updStatus();
+  if(pSide===BK) setTimeout(botGo,1500+Math.random()*1500);
+}
+
+// ── UTILS ─────────────────────────────────────────────────────────────────────
+const RC=i=>[Math.floor(i/9),i%9];
+const SQ=(r,c)=>r*9+c;
+const OB=(r,c)=>r>=0&&r<8&&c>=0&&c<9;
+const SGN=x=>x>0?1:x<0?-1:0;
+
+// Bug 13: board key for repetition detection
+function boardKey(){
+  return board.join(',')+'|'+turn+'|'+(ep===null?'-':ep)+'|'+(cr.wK?1:0)+(cr.wQ?1:0)+(cr.bK?1:0)+(cr.bQ?1:0);
+}
+
+// ── MOVE GENERATION ───────────────────────────────────────────────────────────
+function pMoves(idx,bd,epSq,c){
+  const pc=bd[idx]; if(!pc) return [];
+  const sd=SGN(pc),tp=Math.abs(pc),[r,col]=RC(idx),mv=[];
+  const slide=(dr,dc)=>{ let nr=r+dr,nc=col+dc; while(OB(nr,nc)){const t=bd[SQ(nr,nc)]; if(!t)mv.push(SQ(nr,nc)); else{if(SGN(t)!==sd)mv.push(SQ(nr,nc));break;} nr+=dr;nc+=dc;} };
+  const step=(dr,dc)=>{ const nr=r+dr,nc=col+dc; if(OB(nr,nc)&&SGN(bd[SQ(nr,nc)])!==sd)mv.push(SQ(nr,nc)); };
+  if(tp===P){
+    const d=sd===W?-1:1,sr=sd===W?6:1;
+    if(OB(r+d,col)&&!bd[SQ(r+d,col)]){ mv.push(SQ(r+d,col)); if(r===sr&&!bd[SQ(r+2*d,col)])mv.push(SQ(r+2*d,col)); }
+    [-1,1].forEach(dc=>{ if(OB(r+d,col+dc)){const t=bd[SQ(r+d,col+dc)]; if(SGN(t)===-sd)mv.push(SQ(r+d,col+dc)); if(epSq!==null&&SQ(r+d,col+dc)===epSq)mv.push(epSq);} });
+  } else if(tp===N){ [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]].forEach(([a,b])=>step(a,b)); }
+  else if(tp===B){ [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(([a,b])=>slide(a,b)); }
+  else if(tp===R){ [[-1,0],[1,0],[0,-1],[0,1]].forEach(([a,b])=>slide(a,b)); }
+  else if(tp===Q){ [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]].forEach(([a,b])=>slide(a,b)); }
+  else if(tp===K){
+    [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]].forEach(([a,b])=>step(a,b));
+    if(sd===W){
+      if(c.wK&&!bd[68]&&!bd[69]&&!atk(67,BK,bd)&&!atk(68,BK,bd)&&!atk(69,BK,bd))mv.push(69);
+      if(c.wQ&&!bd[66]&&!bd[65]&&!bd[64]&&!atk(67,BK,bd)&&!atk(66,BK,bd)&&!atk(65,BK,bd))mv.push(65);
+    } else {
+      if(c.bK&&!bd[5]&&!bd[6]&&!atk(4,W,bd)&&!atk(5,W,bd)&&!atk(6,W,bd))mv.push(6);
+      if(c.bQ&&!bd[3]&&!bd[2]&&!bd[1]&&!atk(4,W,bd)&&!atk(3,W,bd)&&!atk(2,W,bd))mv.push(2);
+    }
+  }
+  return mv;
+}
+
+// Bug 10: rewritten atk() using directional ray-casting — O(piece_types * max_ray) per square
+function atk(idx,bySide,bd){
+  const [r,c]=RC(idx);
+  // Pawns
+  const pd=bySide===W?1:-1; // white pawns move toward row 0 (d=-1), so an attacking white pawn sits one row higher (r+1)
+  // A white pawn at [r+1, c±1] attacks [r, c]; a black pawn at [r-1, c±1] attacks [r, c].
+  // For bySide=W: pd=+1 → pawnRow = r+1. For bySide=BK: pd=-1 → pawnRow = r-1.
+  const pawnRow = r + pd; // row where an attacking pawn of bySide would sit
+  for(const dc of[-1,1]){ if(OB(pawnRow,c+dc)){ const p=bd[SQ(pawnRow,c+dc)]; if(p===bySide*P) return true; } }
+  // Knights
+  for(const [dr,dc] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]){
+    const nr=r+dr,nc=c+dc; if(OB(nr,nc)&&bd[SQ(nr,nc)]===bySide*N) return true;
+  }
+  // King
+  for(const [dr,dc] of [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]){
+    const nr=r+dr,nc=c+dc; if(OB(nr,nc)&&bd[SQ(nr,nc)]===bySide*K) return true;
+  }
+  // Bishops / Queens (diagonals)
+  for(const [dr,dc] of [[-1,-1],[-1,1],[1,-1],[1,1]]){
+    let nr=r+dr,nc=c+dc;
+    while(OB(nr,nc)){
+      const p=bd[SQ(nr,nc)];
+      if(p!==0){ if(p===bySide*B||p===bySide*Q) return true; break; }
+      nr+=dr; nc+=dc;
+    }
+  }
+  // Rooks / Queens (straights)
+  for(const [dr,dc] of [[-1,0],[1,0],[0,-1],[0,1]]){
+    let nr=r+dr,nc=c+dc;
+    while(OB(nr,nc)){
+      const p=bd[SQ(nr,nc)];
+      if(p!==0){ if(p===bySide*R||p===bySide*Q) return true; break; }
+      nr+=dr; nc+=dc;
+    }
+  }
+  return false;
+}
+
+function applyMv(from,to,bd,epSq,c){
+  const nb=[...bd];
+  const pc=nb[from],sd=SGN(pc),tp=Math.abs(pc);
+  const cap=nb[to]; let nEp=null; const nC={...c};
+  nb[to]=pc; nb[from]=0;
+  // En passant capture — remove the pawn that was passed
+  if(tp===P&&epSq!==null&&to===epSq){ const [tr,tc]=RC(to); nb[SQ(tr+(sd===W?1:-1),tc)]=0; }
+  // Set en passant square on double push
+  if(tp===P&&Math.abs(RC(to)[0]-RC(from)[0])===2) nEp=SQ((RC(from)[0]+RC(to)[0])/2,RC(from)[1]);
+  // Bug 7: promotion is handled separately via modal; applyMv leaves piece in place for now
+  if(tp===K){
+    if(sd===W){nC.wK=false;nC.wQ=false;}else{nC.bK=false;nC.bQ=false;}
+    if(from===67&&to===69){nb[71]=0;nb[68]=R;}
+    if(from===67&&to===65){nb[63]=0;nb[66]=R;}
+    if(from===4&&to===6){nb[8]=0;nb[5]=-R;}
+    if(from===4&&to===2){nb[0]=0;nb[3]=-R;}
+  }
+  if(tp===R){if(from===63)nC.wQ=false;if(from===71)nC.wK=false;if(from===0)nC.bQ=false;if(from===8)nC.bK=false;}
+  // Revoke castling rights when a rook is captured on its starting square
+  if(to===63)nC.wQ=false;if(to===71)nC.wK=false;if(to===0)nC.bQ=false;if(to===8)nC.bK=false;
+  return {nb,cap,nEp,nC};
+}
+
+function kingIdx(sd,bd){ for(let i=0;i<72;i++)if(bd[i]===sd*K)return i; return -1; }
+function inCheck(sd,bd){ const k=kingIdx(sd,bd); return k>=0&&atk(k,-sd,bd); }
+
+function legal(from){
+  const pc=board[from]; if(!pc) return [];
+  const sd=SGN(pc);
+  return pMoves(from,board,ep,cr).filter(to=>{ const {nb}=applyMv(from,to,board,ep,cr); return !inCheck(sd,nb); });
+}
+
+function allLegal(sd){
+  const res=[];
+  for(let i=0;i<72;i++) if(SGN(board[i])===sd) legal(i).forEach(to=>res.push({f:i,t:to}));
+  return res;
+}
+
+// Bug 11: insufficient material detection
+function insufficientMaterial(bd){
+  const pieces=[];
+  for(let i=0;i<72;i++) if(bd[i]!==0) pieces.push({val:bd[i],sq:i});
+  // K vs K
+  if(pieces.length===2) return true;
+  // K+B vs K or K+N vs K
+  if(pieces.length===3){
+    const types=pieces.map(p=>Math.abs(p.val));
+    if(types.includes(B)||types.includes(N)) return true;
+  }
+  if(pieces.length===4){
+    const bishops=pieces.filter(p=>Math.abs(p.val)===B);
+    if(bishops.length===2){
+      // Bug 4 fix: distinguish K+BB vs K from K+B vs K+B
+      const sideA=SGN(bishops[0].val), sideB=SGN(bishops[1].val);
+      if(sideA!==sideB){
+        // K+B vs K+B — one bishop each side — draw (neither side can force mate)
+        return true;
+      } else {
+        // K+BB vs K — both bishops same side — draw ONLY if they share the same colour square
+        const[r0,c0]=RC(bishops[0].sq),sq0=(r0+c0)%2;
+        const[r1,c1]=RC(bishops[1].sq),sq1=(r1+c1)%2;
+        return sq0===sq1; // same colour square = draw; opposite colours = can force mate
+      }
+    }
+  }
+  return false;
+}
+
+// ── PROMOTION MODAL (Bug 7) ───────────────────────────────────────────────────
+let pendingPromo=null; // { from, to, sd } — filled when pawn reaches back rank
+let promoTimer=null;
+
+function showPromoModal(from,to,sd){
+  pendingPromo={from,to,sd};
+  const modal=document.getElementById('promo-modal');
+  // Colour the piece buttons to match the promoting side
+  modal.querySelectorAll('.promo-piece').forEach(btn=>{
+    btn.style.color=sd===pSide?pColor:bColor;
+  });
+  modal.classList.remove('hidden');
+  // Default to queen after 5 seconds
+  promoTimer=setTimeout(()=>resolvePromo(Q),5000);
+}
+
+function resolvePromo(pieceType){
+  if(promoTimer!==null){ clearTimeout(promoTimer); promoTimer=null; }
+  document.getElementById('promo-modal').classList.add('hidden');
+  if(!pendingPromo) return;
+  const {from,to,sd}=pendingPromo;
+  pendingPromo=null;
+  // Apply promotion piece to board
+  board[to]=sd*pieceType;
+  // Continue game flow after promotion
+  afterMoveApplied(from,to,sd);
+  // Bug 1 fix: schedule bot if it is now the bot's turn and game is not over
+  if(!over && turn!==pSide) setTimeout(botGo,1500+Math.random()*1500);
+}
+
+// ── EXECUTE MOVE ──────────────────────────────────────────────────────────────
+function doMv(from,to){
+  const sd=SGN(board[from]);
+  const prevEp=ep;
+  const {nb,cap,nEp,nC}=applyMv(from,to,board,ep,cr);
+  const epCap=(cap===0&&prevEp!==null&&to===prevEp&&Math.abs(board[from])===P)?P:0;
+  board=nb; ep=nEp; cr=nC; lastF=from; lastT=to; sel=null;
+  const recorded=epCap||Math.abs(cap);
+  if(recorded)(sd===pSide?pCap:bCap).push(recorded);
+  if(sd===pSide) moveCount++;
+  if(recorded) sfxCapture(); else sfxMove();
+
+  // Bug 13: update 50-move clock
+  const isCapture=recorded!==0, isPawnMove=Math.abs(nb[to])===P;
+  if(isCapture||isPawnMove) halfMoveClock=0; else halfMoveClock++;
+
+  // Bug 7: check if pawn reached back rank — if so, show modal (player) or auto-queen (bot)
+  const tp=Math.abs(nb[to]);
+  if(tp===P&&(RC(to)[0]===0||RC(to)[0]===7)){
+    if(sd===pSide){
+      // Player promotes: show modal
+      turn=-turn;
+      showPromoModal(from,to,sd);
+      return; // rest of flow handled in resolvePromo → afterMoveApplied
+    } else {
+      // Bot always promotes to queen
+      board[to]=sd*Q;
+    }
+  }
+
+  turn=-turn;
+  afterMoveApplied(from,to,sd);
+}
+
+function afterMoveApplied(from,to,sd){
+  // Bug 13: record position for repetition detection
+  const key=boardKey();
+  posHistory[key]=(posHistory[key]||0)+1;
+
+  render();
+
+  // Bug 13: check 50-move rule and threefold repetition before updStatus
+  if(halfMoveClock>=100){
+    endDraw('50-move rule — Draw.');
+    return;
+  }
+  if(posHistory[key]>=3){
+    endDraw('Threefold repetition — Draw.');
+    return;
+  }
+
+  // Bug 11: insufficient material
+  if(insufficientMaterial(board)){
+    endDraw('Insufficient material — Draw.');
+    return;
+  }
+
+  updStatus();
+  // Bug 3 fix: play check sound exactly once per move, here — not inside updStatus
+  if(!over && inCheck(turn,board)) sfxCheck();
+
+  // Bug 12: re-render after updStatus sets over=true so check highlight is cleared
+  if(over) render();
+}
+
+function endDraw(message){
+  over=true;
+  const score=calcScore(false,true);
+  const label=pSide===W?'White vs Bot':'Black vs Bot';
+  saveScore(score,label);
+  const outcome=0.5;
+  const oldElo=getElo();
+  const newElo=calcElo(oldElo,outcome);
+  const eloDelta=newElo-oldElo;
+  saveElo(newElo);
+  const deltaStr=(eloDelta>=0?'+':'')+eloDelta;
+  const deltaColor=eloDelta>=0?'#6bffb8':'#ff6b6b';
+  const el=document.getElementById('status');
+  el.innerHTML=`<span>${message}</span>`+
+    `<span style="margin-left:14px;color:#ccc;">ELO: <strong style="color:#fff">${newElo}</strong>`+
+    `<span style="margin-left:6px;color:${deltaColor};font-size:0.85em">(${deltaStr})</span></span>`;
+  el.style.color='#ffdd57';
+  document.getElementById('ptaken').textContent=pCap.map(p=>(pSide===W?SYM_B:SYM_W)[p]||'').join('');
+  document.getElementById('btaken').textContent=bCap.map(p=>(pSide===W?SYM_W:SYM_B)[p]||'').join('');
+  sfxDraw();
+  render();
+}
+
+// ── BOT ───────────────────────────────────────────────────────────────────────
+function botGo(){
+  if(over||turn===pSide||pendingPromo!==null) return;
+  const mv=allLegal(-pSide); if(!mv.length) return;
+  const noncaps=mv.filter(m=>board[m.t]===0);
+  const pool=noncaps.length?noncaps:mv;
+  const pick=pool[Math.floor(Math.random()*pool.length)];
+  doMv(pick.f,pick.t);
+}
+
+// ── INTERACTION ───────────────────────────────────────────────────────────────
+function click(idx){
+  if(over||turn!==pSide) return;
+  if(sel!==null){
+    const mvs=legal(sel);
+    if(mvs.includes(idx)){
+      doMv(sel,idx);
+      // Bug 1: only schedule bot if game is not over
+      if(!over) setTimeout(botGo,1500+Math.random()*1500);
+      return;
+    }
+  }
+  const newSel=(SGN(board[idx])===pSide&&idx!==sel)?idx:null;
+  if(newSel!==null) sfxSelect();
+  sel=newSel;
+  render();
+}
+
+// ── SCORING ───────────────────────────────────────────────────────────────────
+/*
+  Score is computed at game end and reflects quality of play:
+  - Base outcome:  win = 500, draw = 100, loss = 0
+  - Material gained: sum of piece values captured from the opponent (max 39 pts)
+  - Material saved:  each opponent-captured piece subtracts from total (pieces lost hurt)
+  - Efficiency bonus: winning in fewer moves is rewarded (up to 100 pts)
+    formula: max(0, 100 - moveCount * 2) — scales down as game drags on
+  All components are integers; final score is clamped to >= 0.
+*/
+function calcScore(won, drew){
+  // Material: pieces captured by player vs pieces captured by bot (in standard point values)
+  const matGained = pCap.reduce((s,p)=>s+(PIECE_VAL[p]||0),0);
+  const matLost   = bCap.reduce((s,p)=>s+(PIECE_VAL[p]||0),0);
+  // Outcome base
+  const base = won ? 500 : drew ? 100 : 0;
+  // Efficiency bonus (only meaningful for a win or draw; penalise long games)
+  const efficiency = (won || drew) ? Math.max(0, 100 - moveCount * 2) : 0;
+  const score = base + matGained - matLost + efficiency;
+  return Math.max(0, score);
+}
+
+// ── STATUS ────────────────────────────────────────────────────────────────────
+function updStatus(){
+  const chk=inCheck(turn,board),mv=allLegal(turn),el=document.getElementById('status');
+  if(!mv.length){
+    over=true;
+    const won=chk&&turn===(-pSide);  // checkmate and it's the bot's turn = player wins
+    const lost=chk&&turn===pSide;
+    // Bug 3 & 4: stalemate where bot is stuck = player win, not draw
+    const botStalemated=!chk&&turn===(-pSide);
+    const drew=!chk&&turn===pSide;   // only a draw if it's the PLAYER who is stalemated
+    const score=calcScore(won||botStalemated,drew);
+    // Bug 2: pass a meaningful label to saveScore
+    const label=pSide===W?'White vs Bot':'Black vs Bot';
+    saveScore(score,label);
+
+    // ELO update — bot stalemate = win for player
+    const outcome = (won||botStalemated) ? 1 : drew ? 0.5 : 0;
+    const oldElo  = getElo();
+    const newElo  = calcElo(oldElo, outcome);
+    const eloDelta = newElo - oldElo;
+    saveElo(newElo);
+
+    const deltaStr = (eloDelta >= 0 ? '+' : '') + eloDelta;
+    const deltaColor = eloDelta >= 0 ? '#6bffb8' : '#ff6b6b';
+
+    let resultLine;
+    if(won)             resultLine='Checkmate — You win!';
+    else if(lost)       resultLine='Checkmate — Bot wins.';
+    else if(botStalemated) resultLine='Stalemate — Bot is stuck. You win!';
+    else                resultLine='Stalemate — Draw.';
+
+    el.innerHTML =
+      `<span>${resultLine}</span>` +
+      `<span style="margin-left:14px;color:#ccc;">ELO: <strong style="color:#fff">${newElo}</strong>` +
+      `<span style="margin-left:6px;color:${deltaColor};font-size:0.85em">(${deltaStr})</span></span>`;
+    el.style.color=(won||botStalemated)?'#6bffb8':lost?'#ff6b6b':'#ffdd57';
+    if(won||botStalemated) sfxWin(); else if(lost) sfxLose(); else sfxDraw();
+  } else if(chk){
+    el.textContent=turn===pSide?'Check — your move':'Check!';
+    el.style.color='#ff9f43';
+    // Bug 3 fix: sfxCheck moved to afterMoveApplied — do not call here (duplicate removed)
+  } else {
+    el.textContent=turn===pSide?'Your turn':'Bot is thinking…';
+    el.style.color='#888';
+  }
+  // Bug 8: use colour-correct captured piece symbols
+  document.getElementById('ptaken').textContent=pCap.map(p=>(pSide===W?SYM_B:SYM_W)[p]||'').join('');
+  document.getElementById('btaken').textContent=bCap.map(p=>(pSide===W?SYM_W:SYM_B)[p]||'').join('');
+}
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+function render(){
+  const el=document.getElementById('board'); el.innerHTML='';
+  const lm=sel!==null?new Set(legal(sel)):new Set();
+  const flip=pSide===BK;
+  // Bug 12: only show check highlight when !over
+  const chk=!over&&inCheck(turn,board);
+  const kIdx=chk?kingIdx(turn,board):-1;
+
+  for(let di=0;di<72;di++){
+    const idx=flip?71-di:di;
+    const [r,c]=RC(idx),lite=(r+c)%2===0;
+    const sq=document.createElement('div');
+    sq.className='sq';
+    sq.style.background=lite?LSQ:DSQ;
+    if(idx===lastF)sq.classList.add('last-f');
+    if(idx===lastT)sq.classList.add('last-t');
+    if(idx===sel)sq.classList.add('sel');
+    if(lm.has(idx))sq.classList.add(board[idx]?'capt':'hint');
+    if(idx===kIdx)sq.classList.add('check-sq');
+    const pc=board[idx];
+    if(pc){
+      const sp=document.createElement('span');
+      sp.className='piece';
+      sp.textContent=SYM2[Math.abs(pc)];
+      sp.style.color=SGN(pc)===pSide?pColor:bColor;
+      sp.style.filter='drop-shadow(0 1px 3px rgba(0,0,0,0.95)) drop-shadow(0 0 5px rgba(0,0,0,0.7))';
+      sq.appendChild(sp);
+    }
+    sq.onclick=()=>click(idx);
+    el.appendChild(sq);
+  }
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+// buildSetup() is called by launchGame() once the player hits Play on the start menu
+</script>
+</body>
+</html>
