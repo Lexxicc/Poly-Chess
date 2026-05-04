@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="author" content="lexxicc">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Poly-Chess v0.0.2</title>
+<title>Poly-Chess v0.0.4</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
@@ -73,7 +73,7 @@ body {
 .swatch.on { border-color:#FFD700; transform:scale(1.22); }
 .swatch:hover { transform:scale(1.12); }
 /* setup screen: scrollable so it fits on any screen height */
-#setup { max-height:100dvh; overflow-y:auto; padding-top: max(12px, env(safe-area-inset-top)); }
+#setup { max-height:100dvh; overflow-y:auto; padding-top: max(12px, env(safe-area-inset-top)); margin-left:auto; margin-right:auto; }
 /* side buttons: ensure 44px minimum tap height */
 .side-btn { flex:1; min-height:44px; padding:10px 0; border-radius:12px; font-size:13px; font-weight:600; background:#1e1e30; border:2px solid #444; color:#e8e8f0; cursor:pointer; transition:border-color .15s; }
 .play-btn { width:100%; padding:16px; border-radius:16px; font-size:18px; font-weight:900; letter-spacing:.15em; text-transform:uppercase; border:none; color:#fff; cursor:pointer; background:linear-gradient(135deg,#7c3aed,#4338ca); box-shadow:0 4px 24px rgba(124,58,237,0.45); }
@@ -202,12 +202,12 @@ body {
                 <button class="start-menu-btn" onclick="sfxClick();showStartPanel('patchnotes')"><span>Patch Notes</span><span class="ml-auto text-base opacity-40 font-sans">›</span></button>
                 <button class="start-menu-btn" onclick="sfxClick();showStartPanel('settings')"><span>Settings</span><span class="ml-auto text-base opacity-40 font-sans">›</span></button>
             </div>
-            <p style="font-size:10px; text-transform:uppercase; letter-spacing:0.35em; color:var(--color-primary); opacity:0.6; text-align:center; padding:12px 0; border-top: 1px solid var(--color-shadow);">&copy; Tacticon Studios 2026 &nbsp;&mdash;&nbsp; v0.0.1</p>
+            <p style="font-size:10px; text-transform:uppercase; letter-spacing:0.35em; color:var(--color-primary); opacity:0.6; text-align:center; padding:12px 0; border-top: 1px solid var(--color-shadow);">&copy; Tacticon Studios 2026 &nbsp;&mdash;&nbsp; v0.0.3</p>
         </div>
         <div id="start-howtoplay" class="menu-scroll hidden relative z-10"><div class="subpanel-header"><button class="start-back-btn" onclick="showStartPanel('main')">← Back</button><h2>How to Play</h2></div><div class="p-5 space-y-5" style="font-family:'VT323',monospace;font-size:1.1rem;color:#d1d5db">
   <div>
     <div style="color:var(--color-glow);font-weight:bold;font-size:1.2rem;text-transform:uppercase;border-bottom:2px solid var(--color-shadow);padding-bottom:6px;margin-bottom:8px;letter-spacing:0.1em">OBJECTIVE</div>
-    <p>Chess on a <span style="color:var(--color-glow)">9×8 board</span>. You play as <span style="color:#e2e8f0">White</span> against an AI opponent. Put the king in checkmate to win. The AI is rated at a fixed <span style="color:var(--color-glow)">1200 ELO</span>.</p>
+    <p>Chess on a <span style="color:var(--color-glow)">9×8 board</span>. You play as <span style="color:#e2e8f0">White</span> against an AI opponent. Put the king in checkmate to win. The AI is rated at a fixed <span style="color:var(--color-glow)">600 ELO</span>.</p>
   </div>
   <div>
     <div style="color:var(--color-glow);font-weight:bold;font-size:1.2rem;text-transform:uppercase;border-bottom:2px solid var(--color-shadow);padding-bottom:6px;margin-bottom:8px;letter-spacing:0.1em">POLY-CHESS RULES</div>
@@ -233,7 +233,7 @@ body {
     <div style="color:var(--color-glow);font-weight:bold;font-size:1.2rem;text-transform:uppercase;border-bottom:2px solid var(--color-shadow);padding-bottom:6px;margin-bottom:8px;letter-spacing:0.1em">DRAWS &amp; ELO</div>
     <div>• The game is drawn by stalemate, 50-move rule, threefold repetition, or insufficient material.</div>
     <div>• Stalemate caused by the AI counts as a <span style="color:var(--color-glow)">win</span> for you, not a draw.</div>
-    <div>• Your ELO updates after every game (K-factor 32). The AI is fixed at 1200.</div>
+    <div>• Your ELO updates after every game (K-factor 32). The AI is fixed at 600.</div>
   </div>
 </div><div class="subpanel-footer"></div></div>
         <div id="start-highscores" class="menu-scroll hidden relative z-10"><div class="subpanel-header"><button class="start-back-btn" onclick="showStartPanel('main')">← Back</button><h2>High Scores</h2></div><div class="p-5" id="highscore-list"><p style="text-align:center;color:var(--color-primary);opacity:0.5;font-size:0.875rem;margin-top:32px">No scores recorded yet.</p></div><div class="subpanel-footer"></div></div>
@@ -302,7 +302,7 @@ body {
   </div>
 </div>
 
-<p id="footer" style="font-size:10px;text-align:center;opacity:0.4;padding:8px;letter-spacing:0.3em;text-transform:uppercase;">&copy; Tacticon Studios 2026 &mdash; v0.0.2</p>
+<p id="footer" style="font-size:10px;text-align:center;opacity:0.4;padding:8px;letter-spacing:0.3em;text-transform:uppercase;">&copy; Tacticon Studios 2026 &mdash; v0.0.4</p>
 </div><!-- /game-container -->
 
 <script>
@@ -365,6 +365,8 @@ function toggleMute() {
 }
 // ── START MENU ────────────────────────────────────────────────────────────────
 const PATCH_NOTES = [
+  { v: 'v0.0.4', date: '2026-05-04', notes: ['Safe-area inset fix for mobile; ELO description updated (600 ELO AI).'] },
+  { v: 'v0.0.3', date: '2026-05-04', notes: ['Version bump.'] },
   { v: 'v0.0.2', date: '2026-05-04', notes: ['Version bump.'] },
   { v: 'v0.0.1', date: '2026-05-04', notes: ['Initial GitHub release.'] },
   { v: 'v0.0.0', date: '2026-05-04', notes: ['Poly-Chess — forked from Chass v0.0.4. 9×8 board, 2 queens per side, 9 pawns per side.'] },
@@ -373,7 +375,7 @@ const HS_KEY = 'polychess_hs';
 
 // ── ELO ───────────────────────────────────────────────────────────────────────
 const ELO_KEY = 'tacticon_elo';
-const ELO_AI  = 1200;   // AI is treated as a fixed 1200 rating
+const ELO_AI  = 600;    // AI is treated as a fixed 600 rating
 const ELO_K   = 32;     // standard K-factor
 
 function getElo() {
@@ -498,8 +500,8 @@ function backSetup(){
 // ── BOARD INIT ────────────────────────────────────────────────────────────────
 function initBd(){
   board=Array(72).fill(0);
-  [-R,-N,-B,-Q,-K,-Q,-B,-N,-R].forEach((p,i)=>{ board[i]=p; board[i+9]=-P; });
-  [R,N,B,Q,K,Q,B,N,R].forEach((p,i)=>{ board[63+i]=p; board[54+i]=P; });
+  [-R,-B,-N,-Q,-K,-Q,-B,-N,-R].forEach((p,i)=>{ board[i]=p; board[i+9]=-P; });
+  [R,B,N,Q,K,Q,B,N,R].forEach((p,i)=>{ board[63+i]=p; board[54+i]=P; });
 }
 function newGame(){
   initBd(); turn=W; sel=null; lastF=lastT=-1; ep=null;
@@ -774,10 +776,26 @@ function endDraw(message){
 // ── BOT ───────────────────────────────────────────────────────────────────────
 function botGo(){
   if(over||turn===pSide||pendingPromo!==null) return;
-  const mv=allLegal(-pSide); if(!mv.length) return;
-  const noncaps=mv.filter(m=>board[m.t]===0);
-  const pool=noncaps.length?noncaps:mv;
-  const pick=pool[Math.floor(Math.random()*pool.length)];
+  const moves=allLegal(-pSide); if(!moves.length) return;
+  // ~600 ELO heuristic: 1-ply material eval — capture hanging pieces,
+  // avoid hanging own pieces, prefer giving check. Blunders ~25% of the time
+  // (picks an entirely random legal move) so it isn't deterministic.
+  const scored=moves.map(m=>{
+    const piece=Math.abs(board[m.f]);
+    const capVal=board[m.t]?(PIECE_VAL[Math.abs(board[m.t])]||0):0;
+    const {nb}=applyMv(m.f,m.t,board,ep,cr);
+    const hung=atk(m.t,pSide,nb)?(PIECE_VAL[piece]||0):0;
+    const checkBonus=inCheck(pSide,nb)?0.5:0;
+    return {m,score:capVal-hung+checkBonus};
+  });
+  let pick;
+  if(Math.random()<0.25){
+    pick=scored[Math.floor(Math.random()*scored.length)].m;
+  } else {
+    const max=Math.max(...scored.map(s=>s.score));
+    const top=scored.filter(s=>s.score===max);
+    pick=top[Math.floor(Math.random()*top.length)].m;
+  }
   doMv(pick.f,pick.t);
 }
 
