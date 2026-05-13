@@ -12,7 +12,7 @@
 
 ## localStorage
 - `polychess_hs` — high score
-- `tacticon_elo` — shared ELO rating (shared key with XCQ.Chequers)
+- `tacticon_elo` — shared ELO rating (shared key with XChequers.CQ)
 
 ## Notes
 - Uses `tacticon_elo` as a shared ELO key — also used by Chequers (XCQ)
